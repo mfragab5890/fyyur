@@ -8,6 +8,7 @@ import babel
 from flask import Flask, render_template, request, Response, flash, redirect, url_for, jsonify, abort
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
@@ -41,7 +42,7 @@ class Venue(db.Model):
     city = db.Column(db.String(120), nullable=False)
     state = db.Column(db.String(120), nullable=False)
     address = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(120))
+    phone = db.Column(db.String(120), nullable=False)
     genre = db.Column(db.String(), nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
@@ -63,7 +64,7 @@ class Artist(db.Model):
     name = db.Column(db.String(), nullable=False)
     city = db.Column(db.String(120), nullable=False)
     state = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(120))
+    phone = db.Column(db.String(120), nullable=False)
     genres = db.Column(db.String(120), nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
@@ -77,19 +78,16 @@ Artist.seeking_venue = db.Column(db.Boolean, default=False)
 Artist.seeking_description = db.Column(db.String())
 Artist.website = db.Column(db.String())
 
-
-# TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
+#add show table
 class Show(db.Model):
     __tablename__ = 'Show'
-
     id = db.Column(db.Integer, primary_key=True)
-    artist_id = db.Column(db.String(), nullable=False)
-    venue_id = db.Column(db.String(120), nullable=False)
+    artist_id = db.Column(db.Integer, nullable=False)
+    venue_id = db.Column(db.Integer, nullable=False)
     start_time = db.Column(db.DateTime(), nullable=False)
 
     def __repr__(self):
         return f'<Show {self.id} {self.artist_id} {self.venue_id}>'
-
 
 # ----------------------------------------------------------------------------#
 # Filters.
@@ -126,15 +124,20 @@ def index():
 @app.route('/venues')
 def venues():
     # num_shows should be aggregated based on number of upcoming shows per venue.
-    cities = db.session.query(Venue.city,Venue.state).join(Venue.id).group_by(Venue.city).all()
-    area = {'city': ' ', 'state': ' ', 'venues': ' '}
+    q_cities = Venue.query.with_entities(Venue.city).order_by('city').all()
+    cities = list(q_cities)
+    cities = list(dict.fromkeys(cities))
+    area = {}
     areas = [ ]
-    for ent in cities:
-        area[ 'city' ] = ent.city
-        area[ 'state' ] = ent.state
-        area[ 'venues' ] = Venue.query.filter_by(city=ent.city).all()
-        areas.append(area)
-
+    x = ",(')"
+    for city in cities:
+        area['city'] = str(city).translate({ord(i): None for i in x})
+        state = Venue.query.with_entities(Venue.state).filter_by(city=city).first()
+        area['state'] = str(state).translate({ord(i): None for i in x})
+        venue_q = Venue.query.with_entities(Venue.id,Venue.name).filter_by(city=city)
+        area['venues'] = venue_q
+        area_c = area. copy()
+        areas.append(area_c)
     return render_template('pages/venues.html', areas=areas);
 
 
@@ -579,46 +582,28 @@ def create_artist_submission():
 @app.route('/shows')
 def shows():
     # displays list of shows at /shows
-    data = Show.query.order_by('id').all()
-    return render_template('pages/shows.html', shows=data)
-    # TODO: replace with real venues data.
-    #       num_shows should be aggregated based on number of upcoming shows per venue.
-    '''data = [ {
-        "venue_id": 1,
-        "venue_name": "The Musical Hop",
-        "artist_id": 4,
-        "artist_name": "Guns N Petals",
-        "artist_image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80",
-        "start_time": "2019-05-21T21:30:00.000Z"
-    }, {
-        "venue_id": 3,
-        "venue_name": "Park Square Live Music & Coffee",
-        "artist_id": 5,
-        "artist_name": "Matt Quevedo",
-        "artist_image_link": "https://images.unsplash.com/photo-1495223153807-b916f75de8c5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=334&q=80",
-        "start_time": "2019-06-15T23:00:00.000Z"
-    }, {
-        "venue_id": 3,
-        "venue_name": "Park Square Live Music & Coffee",
-        "artist_id": 6,
-        "artist_name": "The Wild Sax Band",
-        "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-        "start_time": "2035-04-01T20:00:00.000Z"
-    }, {
-        "venue_id": 3,
-        "venue_name": "Park Square Live Music & Coffee",
-        "artist_id": 6,
-        "artist_name": "The Wild Sax Band",
-        "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-        "start_time": "2035-04-08T20:00:00.000Z"
-    }, {
-        "venue_id": 3,
-        "venue_name": "Park Square Live Music & Coffee",
-        "artist_id": 6,
-        "artist_name": "The Wild Sax Band",
-        "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-        "start_time": "2035-04-15T20:00:00.000Z"
-    } ]'''
+    x = ",(')"
+    data_show = Show.query.order_by('id').all()
+    shows = []
+    for data in data_show:
+        ven_id = data.venue_id
+        ven_query = Venue.query.with_entities(Venue.name).filter_by(id=ven_id).first()
+        venue_name = str(ven_query).translate({ord(i): None for i in x})
+        art_id = data.artist_id
+        art_query = Artist.query.with_entities(Artist.name,Artist.image_link).filter_by(id=art_id).first()
+        artist_name = str(art_query.name).translate({ord(i): None for i in x})
+        artist_image_link = art_query.image_link
+        start_time = data.start_time
+        show = {
+            "venue_id": ven_id,
+            "venue_name": venue_name,
+            "artist_id": art_id,
+            "artist_name": artist_name,
+            "artist_image_link": artist_image_link,
+            "start_time": start_time
+        }
+        shows.append(show.copy())
+    return render_template('pages/shows.html', shows=shows)
 
 
 @app.route('/shows/create')
